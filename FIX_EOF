@@ -152,7 +152,7 @@ index e9662f1..20dda22 100644
                DistributedCache.addFileToClassPath(status[i].getPath(), conf, fs);
            }
 diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java
-index a0f25c5..7f7e057 100644
+index a0f25c5..299c1c0 100644
 --- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java
 +++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java
 @@ -1,67 +1,103 @@
@@ -282,7 +282,7 @@ index a0f25c5..7f7e057 100644
 +             */
 +            @Override
 +            protected void finalize() throws Throwable {
-+            	if(this.close){
++            	if(!this.close){
 +            		log.error("This file was not closed so try to close during the JVM finalize..");
 +            		try{
 +            			writer.close();
@@ -301,7 +301,7 @@ index a0f25c5..7f7e057 100644
 +    }
  }
 diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java
-index b1af571..fc2cfe7 100644
+index b1af571..6d84cce 100644
 --- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java
 +++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java
 @@ -1,28 +1,26 @@
@@ -490,7 +490,7 @@ index b1af571..fc2cfe7 100644
 +            }
 +            @Override
 +            protected void finalize() throws Throwable {
-+            	if(this.close){
++            	if(!this.close){
 +            		log.error("This file was not closed so try to close during the JVM finalize..");
 +            		try{
 +            			writer.close();
@@ -510,7 +510,7 @@ index b1af571..fc2cfe7 100644
 +    
  }
 diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java
-index 4535564..9dba35c 100644
+index 4535564..1b058cd 100644
 --- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java
 +++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java
 @@ -1,29 +1,28 @@
@@ -619,7 +619,7 @@ index 4535564..9dba35c 100644
 +      }
 +      
 +      protected void finalize() throws Throwable {           	
-+          if(this.close){
++          if(!this.close){
 +      		log.error("This file was not closed so try to close during the JVM finalize..");
 +      		try{
 +      			out.close();
@@ -674,7 +674,7 @@ index 2edd4f8..377b1d5 100644
  
    public static final String KAFKA_BLACKLIST_TOPIC = "kafka.blacklist.topics";
 diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java
-index 7ea80b1..d5f9f30 100644
+index 7ea80b1..9f99f21 100644
 --- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java
 +++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java
 @@ -5,13 +5,16 @@ import java.io.IOException;
@@ -724,7 +724,7 @@ index 7ea80b1..d5f9f30 100644
    }
  
    public void addCounts(EtlKey key) throws IOException {
-@@ -148,9 +163,232 @@ public class EtlMultiOutputCommitter extends FileOutputCommitter {
+@@ -148,9 +163,233 @@ public class EtlMultiOutputCommitter extends FileOutputCommitter {
      super.commitTask(context);
    }
  
@@ -758,6 +758,7 @@ index 7ea80b1..d5f9f30 100644
 +			Path parentpath = target.getParent();
 +			// lets create a temp directory....
 +			//TODO...delete this directories...
++			//TODO create mapper _temporary dir with mapper task so it does not show up....
 +			final String tempLocation = parentpath.toString() + "/_temporary/_"+taskContext.getTaskAttemptID().toString();
 +			final FileSystem fs = FileSystem.get(context.getConfiguration());
 +			
