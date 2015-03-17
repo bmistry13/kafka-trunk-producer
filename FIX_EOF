@@ -1,0 +1,2010 @@
+diff --git a/.gitignore b/.gitignore
+index 4eee96a..be6dd4b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -21,9 +21,12 @@ target
+ **/.idea
+ .idea
+ **/dependency-reduced-pom.xml
++pom.xml.versionsBackup
+ 
+ # target dirs
+ camus-api/target/
+ camus-etl-kafka/target/
+ camus-example/target/
+ camus-schema-registry/target/
++
++pom.xml.versionsBackup
+diff --git a/camus-api/pom.xml b/camus-api/pom.xml
+index e3582bd..f1a4070 100644
+--- a/camus-api/pom.xml
++++ b/camus-api/pom.xml
+@@ -1,11 +1,10 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+ 
+   <parent>
+     <groupId>com.linkedin.camus</groupId>
+     <artifactId>camus-parent</artifactId>
+-    <version>0.1.0-SNAPSHOT</version>
++    <version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+   </parent>
+ 
+   <artifactId>camus-api</artifactId>
+@@ -13,21 +12,25 @@
+   <packaging>jar</packaging>
+ 
+   <dependencies>
+-    <dependency>
+-      <groupId>org.apache.hadoop</groupId>
+-      <artifactId>hadoop-mapreduce-client-core</artifactId>
+-    </dependency>
+-    <dependency>
+-      <groupId>org.apache.hadoop</groupId>
+-      <artifactId>hadoop-mapreduce-client-common</artifactId>
+-    </dependency>
+-    <dependency>
+-      <groupId>org.apache.hadoop</groupId>
+-      <artifactId>hadoop-common</artifactId>
+-    </dependency>
++<dependency>
++    <groupId>org.apache.hadoop</groupId> 
++    <artifactId>hadoop-client</artifactId>
++</dependency>
+     <dependency>
+       <groupId>org.easymock</groupId>
+       <artifactId>easymock</artifactId>
+     </dependency>
++    
++	<dependency>
++   	 	<groupId>org.apache.avro</groupId>
++    	<artifactId>avro</artifactId>
++    	<scope>test</scope>
++	</dependency>
++    <dependency>
++      <groupId>junit</groupId>
++      <artifactId>junit</artifactId>
++      <scope>test</scope>
++    </dependency>
+   </dependencies>
++  
+ </project>
+diff --git a/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterProvider.java b/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterProvider.java
+index 401aff3..98b60f2 100644
+--- a/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterProvider.java
++++ b/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterProvider.java
+@@ -1,11 +1,12 @@
+ package com.linkedin.camus.etl;
+ 
+-import com.linkedin.camus.coders.CamusWrapper;
+ import java.io.IOException;
+-import org.apache.hadoop.mapreduce.RecordWriter;
++
+ import org.apache.hadoop.mapreduce.TaskAttemptContext;
+ import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter;
+ 
++import com.linkedin.camus.coders.CamusWrapper;
++
+ /**
+  *
+  *
+@@ -14,7 +15,8 @@ public interface RecordWriterProvider {
+ 
+     String getFilenameExtension();
+ 
+-    RecordWriter<IEtlKey, CamusWrapper> getDataRecordWriter(
++    @SuppressWarnings("rawtypes")
++	RecordWriterWithCloseStatus<IEtlKey, CamusWrapper> getDataRecordWriter(
+             TaskAttemptContext context, String fileName, CamusWrapper data, FileOutputCommitter committer) throws IOException,
+             InterruptedException;
+-}
++    }
+diff --git a/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterWithCloseStatus.java b/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterWithCloseStatus.java
+new file mode 100644
+index 0000000..2496d61
+--- /dev/null
++++ b/camus-api/src/main/java/com/linkedin/camus/etl/RecordWriterWithCloseStatus.java
+@@ -0,0 +1,19 @@
++package com.linkedin.camus.etl;
++
++import org.apache.hadoop.mapreduce.RecordWriter;
++
++
++/**
++ * This is writer interface added to check if underlying writer is closed or not. 
++ *
++ * @param <K>  key 
++ * @param <V>  value
++ */
++public abstract class RecordWriterWithCloseStatus<K, V> extends RecordWriter<K, V>{
++	/**
++	 * Give Ability to check if close has been called on the writer or File has been closed on not..
++	 * @return
++	 */
++	public abstract boolean isClose();
++	
++}
+\ No newline at end of file
+diff --git a/camus-etl-kafka/pom.xml b/camus-etl-kafka/pom.xml
+index c02d724..5f2229c 100644
+--- a/camus-etl-kafka/pom.xml
++++ b/camus-etl-kafka/pom.xml
+@@ -1,11 +1,10 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+ 	<modelVersion>4.0.0</modelVersion>
+ 
+ 	<parent>
+ 		<groupId>com.linkedin.camus</groupId>
+ 		<artifactId>camus-parent</artifactId>
+-		<version>0.1.0-SNAPSHOT</version>
++		<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+ 	</parent>
+ 
+ 	<artifactId>camus-etl-kafka</artifactId>
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/CamusJob.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/CamusJob.java
+index e9662f1..20dda22 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/CamusJob.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/CamusJob.java
+@@ -1,16 +1,5 @@
+ package com.linkedin.camus.etl.kafka;
+ 
+-import com.linkedin.camus.etl.kafka.common.DateUtils;
+-import com.linkedin.camus.etl.kafka.common.EtlCounts;
+-import com.linkedin.camus.etl.kafka.common.EtlKey;
+-import com.linkedin.camus.etl.kafka.common.ExceptionWritable;
+-import com.linkedin.camus.etl.kafka.common.Source;
+-import com.linkedin.camus.etl.kafka.mapred.EtlInputFormat;
+-import com.linkedin.camus.etl.kafka.mapred.EtlMapper;
+-import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
+-import com.linkedin.camus.etl.kafka.mapred.EtlRecordReader;
+-import com.linkedin.camus.etl.kafka.reporter.BaseReporter;
+-import com.linkedin.camus.etl.kafka.reporter.TimeReporter;
+ 
+ import java.io.BufferedReader;
+ import java.io.File;
+@@ -18,23 +7,16 @@ import java.io.FileInputStream;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.InputStreamReader;
+-import java.lang.ClassNotFoundException;
+ import java.lang.reflect.InvocationTargetException;
+-import java.net.URI;
+ import java.net.URISyntaxException;
+-import java.text.NumberFormat;
+ import java.util.ArrayList;
+-import java.util.Collection;
++import java.util.Arrays;
++import java.util.Comparator;
+ import java.util.HashMap;
+-import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Map.Entry;
+ import java.util.Properties;
+-import java.util.Set;
+-import java.util.TreeMap;
+-import java.util.Comparator;
+-import java.util.Arrays;
+ import java.util.regex.Pattern;
+ 
+ import org.apache.commons.cli.CommandLine;
+@@ -55,7 +37,6 @@ import org.apache.hadoop.fs.PathFilter;
+ import org.apache.hadoop.io.SequenceFile;
+ import org.apache.hadoop.mapred.JobClient;
+ import org.apache.hadoop.mapred.JobConf;
+-import org.apache.hadoop.mapred.JobID;
+ import org.apache.hadoop.mapred.TIPStatus;
+ import org.apache.hadoop.mapred.TaskCompletionEvent;
+ import org.apache.hadoop.mapred.TaskReport;
+@@ -80,6 +61,16 @@ import org.joda.time.DateTime;
+ import org.joda.time.DateTimeZone;
+ import org.joda.time.format.DateTimeFormatter;
+ 
++import com.linkedin.camus.etl.kafka.common.DateUtils;
++import com.linkedin.camus.etl.kafka.common.EtlCounts;
++import com.linkedin.camus.etl.kafka.common.EtlKey;
++import com.linkedin.camus.etl.kafka.common.ExceptionWritable;
++import com.linkedin.camus.etl.kafka.common.Source;
++import com.linkedin.camus.etl.kafka.mapred.EtlInputFormat;
++import com.linkedin.camus.etl.kafka.mapred.EtlMapper;
++import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
++import com.linkedin.camus.etl.kafka.mapred.EtlRecordReader;
++import com.linkedin.camus.etl.kafka.reporter.BaseReporter;
+ 
+ public class CamusJob extends Configured implements Tool {
+ 
+@@ -119,7 +110,6 @@ public class CamusJob extends Configured implements Tool {
+   private Job hadoopJob = null;
+ 
+   private final Properties props;
+-
+   private DateTimeFormatter dateFmt = DateUtils.getDateTimeFormatter("YYYY-MM-dd-HH-mm-ss", DateTimeZone.UTC);
+ 
+   public CamusJob() throws IOException {
+@@ -132,7 +122,7 @@ public class CamusJob extends Configured implements Tool {
+ 
+   public CamusJob(Properties props, Logger log) throws IOException {
+     this.props = props;
+-    this.log = log;
++    CamusJob.log = log;
+   }
+ 
+   private static HashMap<String, Long> timingMap = new HashMap<String, Long>();
+@@ -203,7 +193,6 @@ public class CamusJob extends Configured implements Tool {
+                 break;
+               }
+             }
+-
+             if (!filterMatch)
+               DistributedCache.addFileToClassPath(status[i].getPath(), conf, fs);
+           }
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java
+index a0f25c5..7f7e057 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/AvroRecordWriterProvider.java
+@@ -1,67 +1,103 @@
+ package com.linkedin.camus.etl.kafka.common;
+ 
+-import com.linkedin.camus.coders.CamusWrapper;
+-import com.linkedin.camus.etl.IEtlKey;
+-import com.linkedin.camus.etl.RecordWriterProvider;
+-import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
+ import java.io.IOException;
++
+ import org.apache.avro.file.CodecFactory;
+ import org.apache.avro.file.DataFileWriter;
+ import org.apache.avro.generic.GenericRecord;
+ import org.apache.avro.specific.SpecificDatumWriter;
+ import org.apache.hadoop.fs.Path;
+-import org.apache.hadoop.mapreduce.RecordWriter;
+ import org.apache.hadoop.mapreduce.TaskAttemptContext;
+ import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter;
+ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+ 
++import com.linkedin.camus.coders.CamusWrapper;
++import com.linkedin.camus.etl.IEtlKey;
++import com.linkedin.camus.etl.RecordWriterProvider;
++import com.linkedin.camus.etl.RecordWriterWithCloseStatus;
++import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
++
++import org.apache.log4j.Logger;
++
+ 
+ /**
+  *
+  *
+  */
+ public class AvroRecordWriterProvider implements RecordWriterProvider {
+-  public final static String EXT = ".avro";
+-
+-  public AvroRecordWriterProvider(TaskAttemptContext context) {
+-  }
++    public final static String EXT = ".avro";
++    
++    private static Logger log = Logger.getLogger(AvroRecordWriterProvider.class);
++    
+ 
+-  @Override
+-  public String getFilenameExtension() {
+-    return EXT;
+-  }
++    public AvroRecordWriterProvider(TaskAttemptContext context) {
++    }
++    
++    @Override
++    public String getFilenameExtension() {
++        return EXT;
++    }
+ 
+-  @Override
+-  public RecordWriter<IEtlKey, CamusWrapper> getDataRecordWriter(TaskAttemptContext context, String fileName,
+-      CamusWrapper data, FileOutputCommitter committer) throws IOException, InterruptedException {
+-    final DataFileWriter<Object> writer = new DataFileWriter<Object>(new SpecificDatumWriter<Object>());
++    @SuppressWarnings("rawtypes")
++	@Override
++    public RecordWriterWithCloseStatus<IEtlKey, CamusWrapper> getDataRecordWriter(
++            TaskAttemptContext context,
++            String fileName,
++            CamusWrapper data,
++            FileOutputCommitter committer) throws IOException, InterruptedException {
++        final DataFileWriter<Object> writer = new DataFileWriter<Object>(
++                new SpecificDatumWriter<Object>());
+ 
+-    if (FileOutputFormat.getCompressOutput(context)) {
+-      if ("snappy".equals(EtlMultiOutputFormat.getEtlOutputCodec(context))) {
+-        writer.setCodec(CodecFactory.snappyCodec());
+-      } else {
+-        int level = EtlMultiOutputFormat.getEtlDeflateLevel(context);
+-        writer.setCodec(CodecFactory.deflateCodec(level));
+-      }
+-    }
++        if (FileOutputFormat.getCompressOutput(context)) {
++            if ("snappy".equals(EtlMultiOutputFormat.getEtlOutputCodec(context))) {
++                writer.setCodec(CodecFactory.snappyCodec());
++            } else {
++                int level = EtlMultiOutputFormat.getEtlDeflateLevel(context);
++                writer.setCodec(CodecFactory.deflateCodec(level));
++            }
++        }
+ 
+-    Path path = committer.getWorkPath();
+-    path = new Path(path, EtlMultiOutputFormat.getUniqueFile(context, fileName, EXT));
+-    writer.create(((GenericRecord) data.getRecord()).getSchema(), path.getFileSystem(context.getConfiguration())
+-        .create(path));
++        Path path = committer.getWorkPath();
++        path = new Path(path, EtlMultiOutputFormat.getUniqueFile(context, fileName, EXT));
++        writer.create(((GenericRecord) data.getRecord()).getSchema(),
++                path.getFileSystem(context.getConfiguration()).create(path));
+ 
+-    writer.setSyncInterval(EtlMultiOutputFormat.getEtlAvroWriterSyncInterval(context));
++        writer.setSyncInterval(EtlMultiOutputFormat.getEtlAvroWriterSyncInterval(context));
+ 
+-    return new RecordWriter<IEtlKey, CamusWrapper>() {
+-      @Override
+-      public void write(IEtlKey ignore, CamusWrapper data) throws IOException {
+-        writer.append(data.getRecord());
+-      }
++        return new RecordWriterWithCloseStatus<IEtlKey, CamusWrapper>() {
++        	
++        	private volatile boolean close;
++            @Override
++            public void write(IEtlKey ignore, CamusWrapper data) throws IOException {
++                writer.append(data.getRecord());
++            }
+ 
+-      @Override
+-      public void close(TaskAttemptContext arg0) throws IOException, InterruptedException {
+-        writer.close();
+-      }
+-    };
+-  }
++            @Override
++            public void close(TaskAttemptContext arg0) throws IOException, InterruptedException {
++                writer.close();
++                close = true;
++            }
++            
++            /**
++             * THis is our last attemp to close the file...
++             */
++            @Override
++            protected void finalize() throws Throwable {
++            	if(this.close){
++            		log.error("This file was not closed so try to close during the JVM finalize..");
++            		try{
++            			writer.close();
++            		}catch(Throwable th){
++            			log.error("File Close erorr during finalize()");
++            		}
++            	}
++            	super.finalize();
++            }
++            
++            @Override
++            public boolean isClose() {
++				return close;
++			}
++        };
++    }
+ }
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java
+index b1af571..fc2cfe7 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/SequenceFileRecordWriterProvider.java
+@@ -1,28 +1,26 @@
+ package com.linkedin.camus.etl.kafka.common;
+ 
+-import com.linkedin.camus.coders.CamusWrapper;
+-import com.linkedin.camus.etl.IEtlKey;
+-import com.linkedin.camus.etl.RecordWriterProvider;
+-import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
+ import java.io.IOException;
+-import org.apache.hadoop.fs.Path;
+-import org.apache.hadoop.util.ReflectionUtils;
+-import org.apache.hadoop.mapreduce.RecordWriter;
+-import org.apache.hadoop.mapreduce.TaskAttemptContext;
+-import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter;
+-import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
+ 
++import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.fs.Path;
++import org.apache.hadoop.io.LongWritable;
+ import org.apache.hadoop.io.SequenceFile;
+ import org.apache.hadoop.io.SequenceFile.CompressionType;
+-import org.apache.hadoop.io.compress.DefaultCodec;
+-import org.apache.hadoop.io.compress.CompressionCodec;
+-import org.apache.hadoop.io.LongWritable;
+ import org.apache.hadoop.io.Text;
+-
+-import org.apache.hadoop.conf.Configuration;
+-
++import org.apache.hadoop.io.compress.CompressionCodec;
++import org.apache.hadoop.io.compress.DefaultCodec;
++import org.apache.hadoop.mapreduce.TaskAttemptContext;
++import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter;
++import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
++import org.apache.hadoop.util.ReflectionUtils;
+ import org.apache.log4j.Logger;
+ 
++import com.linkedin.camus.coders.CamusWrapper;
++import com.linkedin.camus.etl.IEtlKey;
++import com.linkedin.camus.etl.RecordWriterProvider;
++import com.linkedin.camus.etl.RecordWriterWithCloseStatus;
++import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
+ 
+ /**
+  * Provides a RecordWriter that uses SequenceFile.Writer to write
+@@ -35,72 +33,103 @@ import org.apache.log4j.Logger;
+  *
+  */
+ public class SequenceFileRecordWriterProvider implements RecordWriterProvider {
+-  public static final String ETL_OUTPUT_RECORD_DELIMITER = "etl.output.record.delimiter";
+-  public static final String DEFAULT_RECORD_DELIMITER = "";
+-
+-  private static Logger log = Logger.getLogger(SequenceFileRecordWriterProvider.class);
++    public static final String ETL_OUTPUT_RECORD_DELIMITER = "etl.output.record.delimiter";
++    public static final String DEFAULT_RECORD_DELIMITER = "";
+ 
+-  protected String recordDelimiter = null;
++    private static Logger log = Logger.getLogger(SequenceFileRecordWriterProvider.class);
+ 
+-  public SequenceFileRecordWriterProvider(TaskAttemptContext context) {
+-
+-  }
+-
+-  // TODO: Make this configurable somehow.
+-  // To do this, we'd have to make SequenceFileRecordWriterProvider have an
+-  // init(JobContext context) method signature that EtlMultiOutputFormat would always call.
+-  @Override
+-  public String getFilenameExtension() {
+-    return "";
+-  }
+-
+-  @Override
+-  public RecordWriter<IEtlKey, CamusWrapper> getDataRecordWriter(TaskAttemptContext context, String fileName,
+-      CamusWrapper camusWrapper, FileOutputCommitter committer) throws IOException, InterruptedException {
+-
+-    Configuration conf = context.getConfiguration();
++    protected String recordDelimiter = null;
++        
++    public SequenceFileRecordWriterProvider(TaskAttemptContext  context) {
++    	
++    }
+ 
+-    // If recordDelimiter hasn't been initialized, do so now
+-    if (recordDelimiter == null) {
+-      recordDelimiter = conf.get(ETL_OUTPUT_RECORD_DELIMITER, DEFAULT_RECORD_DELIMITER);
++    // TODO: Make this configurable somehow.
++    // To do this, we'd have to make SequenceFileRecordWriterProvider have an
++    // init(JobContext context) method signature that EtlMultiOutputFormat would always call.
++    @Override
++    public String getFilenameExtension() {
++        return "";
+     }
+ 
+-    CompressionCodec compressionCodec = null;
+-    CompressionType compressionType = CompressionType.NONE;
++    @SuppressWarnings("rawtypes")
++    @Override
++    public RecordWriterWithCloseStatus<IEtlKey, CamusWrapper> getDataRecordWriter(TaskAttemptContext context, String fileName,
++        CamusWrapper camusWrapper, FileOutputCommitter committer) throws IOException, InterruptedException {
+ 
+-    // Determine compression type (BLOCK or RECORD) and compression codec to use.
+-    if (SequenceFileOutputFormat.getCompressOutput(context)) {
+-      compressionType = SequenceFileOutputFormat.getOutputCompressionType(context);
+-      Class<?> codecClass = SequenceFileOutputFormat.getOutputCompressorClass(context, DefaultCodec.class);
+-      // Instantiate the CompressionCodec Class
+-      compressionCodec = (CompressionCodec) ReflectionUtils.newInstance(codecClass, conf);
+-    }
++      Configuration conf = context.getConfiguration();
+ 
+-    // Get the filename for this RecordWriter.
+-    Path path =
+-        new Path(committer.getWorkPath(), EtlMultiOutputFormat.getUniqueFile(context, fileName, getFilenameExtension()));
+-
+-    log.info("Creating new SequenceFile.Writer with compression type " + compressionType + " and compression codec "
+-        + (compressionCodec != null ? compressionCodec.getClass().getName() : "null"));
+-    final SequenceFile.Writer writer =
+-        SequenceFile.createWriter(path.getFileSystem(conf), conf, path, LongWritable.class, Text.class,
+-            compressionType, compressionCodec, context);
+-
+-    // Return a new anonymous RecordWriter that uses the
+-    // SequenceFile.Writer to write data to HDFS
+-    return new RecordWriter<IEtlKey, CamusWrapper>() {
+-      @Override
+-      public void write(IEtlKey key, CamusWrapper data) throws IOException, InterruptedException {
+-        String record = (String) data.getRecord() + recordDelimiter;
+-        // Use the timestamp from the EtlKey as the key for this record.
+-        // TODO: Is there a better key to use here?
+-        writer.append(new LongWritable(key.getTime()), new Text(record));
++      // If recordDelimiter hasn't been initialized, do so now
++      if (recordDelimiter == null) {
++        recordDelimiter = conf.get(ETL_OUTPUT_RECORD_DELIMITER, DEFAULT_RECORD_DELIMITER);
+       }
+ 
+-      @Override
+-      public void close(TaskAttemptContext context) throws IOException, InterruptedException {
+-        writer.close();
++      CompressionCodec compressionCodec = null;
++      CompressionType compressionType = CompressionType.NONE;
++
++      // Determine compression type (BLOCK or RECORD) and compression codec to use.
++      if (SequenceFileOutputFormat.getCompressOutput(context)) {
++        compressionType = SequenceFileOutputFormat.getOutputCompressionType(context);
++        Class<?> codecClass = SequenceFileOutputFormat.getOutputCompressorClass(context, DefaultCodec.class);
++        // Instantiate the CompressionCodec Class
++        compressionCodec = (CompressionCodec) ReflectionUtils.newInstance(codecClass, conf);
+       }
+-    };
+-  }
++
++      // Get the filename for this RecordWriter.
++      Path path =
++          new Path(committer.getWorkPath(), EtlMultiOutputFormat.getUniqueFile(context, fileName, getFilenameExtension()));
++
++      log.info("Creating new SequenceFile.Writer with compression type " + compressionType + " and compression codec "
++          + (compressionCodec != null ? compressionCodec.getClass().getName() : "null"));
++      final SequenceFile.Writer writer =
++          SequenceFile.createWriter(path.getFileSystem(conf), conf, path, LongWritable.class, Text.class,
++              compressionType, compressionCodec, context);
++        // Return a new anonymous RecordWriter that uses the
++        // SequenceFile.Writer to write data to HDFS
++        return new RecordWriterWithCloseStatus<IEtlKey, CamusWrapper>() {
++            private volatile boolean close;
++
++            @Override
++            public void write(IEtlKey key, CamusWrapper data) throws IOException, InterruptedException {
++            	
++            	String record = (String)data.getRecord();
++            	// do not do string concatenate if not needed...here...???
++            	if(recordDelimiter != null && !recordDelimiter.isEmpty()){
++            		record = record + recordDelimiter;
++            	}
++            	
++            	/**
++            	 * What if file is closed ?  Should we create a new one here..?
++            	 * should we reopen it or not...
++            	 */        	
++                // Use the timestamp from the EtlKey as the key for this record.
++                // TODO: Is there a better key to use here?
++                writer.append(new LongWritable(key.getTime()), new Text(record));
++            }
++
++            @Override
++            public void close(TaskAttemptContext context) throws IOException, InterruptedException {
++                writer.close();
++                close = true;
++            }
++            @Override
++            protected void finalize() throws Throwable {
++            	if(this.close){
++            		log.error("This file was not closed so try to close during the JVM finalize..");
++            		try{
++            			writer.close();
++            		}catch(Throwable th){
++            			log.error("File Close erorr during finalize()");
++            		}
++            	}
++            	super.finalize();
++            }
++
++			@Override
++			public boolean isClose() {
++				return close;
++			}            
++        };
++    }
++    
+ }
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java
+index 4535564..9dba35c 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/common/StringRecordWriterProvider.java
+@@ -1,29 +1,28 @@
+ package com.linkedin.camus.etl.kafka.common;
+ 
+-import com.linkedin.camus.coders.CamusWrapper;
+-import com.linkedin.camus.etl.IEtlKey;
+-import com.linkedin.camus.etl.RecordWriterProvider;
+-import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
+-
+ import java.io.DataOutputStream;
+ import java.io.IOException;
+ 
+-import org.apache.avro.file.CodecFactory;
+ import org.apache.hadoop.conf.Configuration;
+ import org.apache.hadoop.fs.FSDataOutputStream;
+ import org.apache.hadoop.fs.FileSystem;
+ import org.apache.hadoop.fs.Path;
+ import org.apache.hadoop.io.compress.CompressionCodec;
++import org.apache.hadoop.io.compress.DefaultCodec;
+ import org.apache.hadoop.io.compress.GzipCodec;
+ import org.apache.hadoop.io.compress.SnappyCodec;
+-import org.apache.hadoop.io.compress.DefaultCodec;
+-import org.apache.hadoop.mapreduce.RecordWriter;
+ import org.apache.hadoop.mapreduce.TaskAttemptContext;
+ import org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter;
+ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+ import org.apache.hadoop.util.ReflectionUtils;
+ import org.apache.log4j.Logger;
+ 
++import com.linkedin.camus.coders.CamusWrapper;
++import com.linkedin.camus.etl.IEtlKey;
++import com.linkedin.camus.etl.RecordWriterProvider;
++import com.linkedin.camus.etl.RecordWriterWithCloseStatus;
++import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
++
+ 
+ /**
+  * Provides a RecordWriter that uses FSDataOutputStream to write
+@@ -32,6 +31,7 @@ import org.apache.log4j.Logger;
+ public class StringRecordWriterProvider implements RecordWriterProvider {
+   public static final String ETL_OUTPUT_RECORD_DELIMITER = "etl.output.record.delimiter";
+   public static final String DEFAULT_RECORD_DELIMITER = "\n";
++  private static Logger log = Logger.getLogger(StringRecordWriterProvider.class);
+ 
+   protected String recordDelimiter = null;
+ 
+@@ -71,7 +71,7 @@ public class StringRecordWriterProvider implements RecordWriterProvider {
+   }
+ 
+   @Override
+-  public RecordWriter<IEtlKey, CamusWrapper> getDataRecordWriter(TaskAttemptContext context, String fileName,
++  public RecordWriterWithCloseStatus<IEtlKey, CamusWrapper> getDataRecordWriter(TaskAttemptContext context, String fileName,
+       CamusWrapper camusWrapper, FileOutputCommitter committer) throws IOException, InterruptedException {
+ 
+     // If recordDelimiter hasn't been initialized, do so now
+@@ -112,28 +112,48 @@ public class StringRecordWriterProvider implements RecordWriterProvider {
+     };
+     */
+   }
++  @SuppressWarnings("rawtypes")
++  protected static class ByteRecordWriter extends  RecordWriterWithCloseStatus<IEtlKey, CamusWrapper> {
++  	
++      private volatile boolean close;
++      private DataOutputStream out;
++      private String recordDelimiter;
++
++      public ByteRecordWriter(DataOutputStream out, String recordDelimiter) {
++          this.out = out;
++          this.recordDelimiter = recordDelimiter;
++      }
+ 
+-  protected static class ByteRecordWriter extends RecordWriter<IEtlKey, CamusWrapper> {
+-    private DataOutputStream out;
+-    private String recordDelimiter;
+-
+-    public ByteRecordWriter(DataOutputStream out, String recordDelimiter) {
+-      this.out = out;
+-      this.recordDelimiter = recordDelimiter;
+-    }
+-
+-    @Override
+-    public void write(IEtlKey ignore, CamusWrapper value) throws IOException {
+-      boolean nullValue = value == null;
+-      if (!nullValue) {
+-        String record = (String) value.getRecord() + recordDelimiter;
+-        out.write(record.getBytes());
++      @Override
++      public void write(IEtlKey ignore, CamusWrapper value) throws IOException {
++          boolean nullValue = value == null;
++          if (!nullValue) {
++          	String record = (String)value.getRecord() + recordDelimiter;
++              out.write(record.getBytes());
++          }
+       }
+-    }
+ 
+-    @Override
+-    public void close(TaskAttemptContext taskAttemptContext) throws IOException, InterruptedException {
+-      out.close();
+-    }
++      @Override
++      public void close(TaskAttemptContext taskAttemptContext) throws IOException, InterruptedException {
++          out.close();
++          close = true;
++      }
++      
++      protected void finalize() throws Throwable {           	
++          if(this.close){
++      		log.error("This file was not closed so try to close during the JVM finalize..");
++      		try{
++      			out.close();
++      		}catch(Throwable th){
++      			log.error("File Close erorr during finalize()");
++      		}
++      	}
++      	super.finalize();
++      }       
++      
++      @Override
++      public boolean isClose() {
++			return close;
++		}      
+   }
+ }
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlInputFormat.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlInputFormat.java
+index 2edd4f8..377b1d5 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlInputFormat.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlInputFormat.java
+@@ -1,16 +1,5 @@
+ package com.linkedin.camus.etl.kafka.mapred;
+ 
+-import com.linkedin.camus.coders.CamusWrapper;
+-import com.linkedin.camus.coders.MessageDecoder;
+-import com.linkedin.camus.etl.kafka.CamusJob;
+-import com.linkedin.camus.etl.kafka.coders.KafkaAvroMessageDecoder;
+-import com.linkedin.camus.etl.kafka.coders.MessageDecoderFactory;
+-import com.linkedin.camus.etl.kafka.common.EtlKey;
+-import com.linkedin.camus.etl.kafka.common.EtlRequest;
+-import com.linkedin.camus.etl.kafka.common.LeaderInfo;
+-import com.linkedin.camus.workallocater.CamusRequest;
+-import com.linkedin.camus.workallocater.WorkAllocator;
+-
+ import java.io.IOException;
+ import java.net.URI;
+ import java.security.InvalidParameterException;
+@@ -25,7 +14,6 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Properties;
+ import java.util.Set;
+-import java.util.concurrent.ConcurrentHashMap;
+ import java.util.regex.Pattern;
+ 
+ import kafka.api.PartitionOffsetRequestInfo;
+@@ -69,6 +57,7 @@ import com.linkedin.camus.workallocater.WorkAllocator;
+ /**
+  * Input format for a Kafka pull job.
+  */
++@SuppressWarnings("rawtypes")
+ public class EtlInputFormat extends InputFormat<EtlKey, CamusWrapper> {
+ 
+   public static final String KAFKA_BLACKLIST_TOPIC = "kafka.blacklist.topics";
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java
+index 7ea80b1..d5f9f30 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputCommitter.java
+@@ -5,13 +5,16 @@ import java.io.IOException;
+ import java.io.OutputStream;
+ import java.lang.reflect.Constructor;
+ import java.util.ArrayList;
++import java.util.Date;
+ import java.util.HashMap;
+ import java.util.Map;
++import java.util.concurrent.TimeUnit;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ 
+ import org.apache.hadoop.fs.FileStatus;
+ import org.apache.hadoop.fs.FileSystem;
++import org.apache.hadoop.fs.FileUtil;
+ import org.apache.hadoop.fs.Path;
+ import org.apache.hadoop.io.NullWritable;
+ import org.apache.hadoop.io.SequenceFile;
+@@ -22,8 +25,10 @@ import org.apache.log4j.Logger;
+ import org.codehaus.jackson.map.ObjectMapper;
+ 
+ import com.linkedin.camus.etl.RecordWriterProvider;
++import com.linkedin.camus.etl.kafka.CamusJob;
+ import com.linkedin.camus.etl.kafka.common.EtlCounts;
+ import com.linkedin.camus.etl.kafka.common.EtlKey;
++import com.linkedin.camus.etl.kafka.mapred.RetryLogic.Delegate;
+ 
+ 
+ public class EtlMultiOutputCommitter extends FileOutputCommitter {
+@@ -41,7 +46,17 @@ public class EtlMultiOutputCommitter extends FileOutputCommitter {
+     if (! fs.exists(path.getParent())) {
+       mkdirs(fs, path.getParent());
+     }
+-    fs.mkdirs(path);
++    boolean result = fs.mkdirs(path);
++    /*
++     * We do not want silent failure...
++     *  SHould we re-check if fs.exists(path.getParent()) then alert ...? Should we trust FS or double check...?
++     *  Based on feedback please refer to https://github.com/linkedin/camus/issues/189
++     */
++    if(!result){
++    	String msg = "Unable to create directory: " + path.toString();
++    	log.error(msg);
++    	throw new IOException(msg);
++    }
+   }
+ 
+   public void addCounts(EtlKey key) throws IOException {
+@@ -148,9 +163,232 @@ public class EtlMultiOutputCommitter extends FileOutputCommitter {
+     super.commitTask(context);
+   }
+ 
+-  protected void commitFile(JobContext job, Path source, Path target) throws IOException {
+-    FileSystem.get(job.getConfiguration()).rename(source, target);
+-  }
++	protected void commitFile(final JobContext job, final Path source, final Path target) throws IOException{
++
++		/**
++		 * Custom code to commit the file across volumes as suggested by the Peter Newcomb...
++		 *  We also wanted to preserve the so we need attempted task id as well... hence this will be only called when task that is needs to be committed.
++		 *  mapred.map.tasks.speculative.execution	true	If true, then multiple instances of some map tasks may be executed in parallel for safe reason add "taskid to temp"
++		 * 
++		 *  user volume/tmp  (volume 1)  to /raw/logmon (volume 2) and then rename file to final target location (/raw/logmon/...)
++		 *  can not remove /_temporary as other camus job may write to it so delete it till taskid.
++		 *  
++		 *  This is very inefficient solution (Kakfa ->copy to temp user volume-> copy to temp day volume ->rename to final destination.
++		 *  This will increase the latency of Camus job, Hence, lags is expected to go high.
++		 *  
++		 */
++		
++		
++		if(EtlMultiOutputFormat.isCopyAndRenameFinalDestination(job)){
++			long startTime = System.currentTimeMillis();
++			log.info("Starting copy-rename-commit at " +  new Date());
++			CamusJob.startTiming("copy-rename-commit");
++			log.info("Using the Two Steps Process Copy to Temp and then rename to target.");
++			final TaskAttemptContext taskContext = (TaskAttemptContext) job;
++			// TODO move this to configuration....this is not requirement
++			final int retry=3;
++			Path parentpath = target.getParent();
++			// lets create a temp directory....
++			//TODO...delete this directories...
++			final String tempLocation = parentpath.toString() + "/_temporary/_"+taskContext.getTaskAttemptID().toString();
++			final FileSystem fs = FileSystem.get(context.getConfiguration());
++			
++			try{
++			//TODO file needs to compare the file status to destination or md5dum so we do not get corruption or eof issue...
++			//final FileStatus fileInfo =  fs.getFileStatus(source);
++			
++			//TODO get this from configuration....
++			RetryLogic<Boolean> retryFileCheck = new RetryLogic<Boolean>(retry, 1, TimeUnit.SECONDS, this.log);
++			
++			final Delegate<Boolean> tempDirExists = new RetryLogic.Delegate<Boolean>() {
++				@Override
++				public Boolean call() throws Exception {
++					final Path destinationTemp = new Path(tempLocation);
++					boolean result = false;
++					
++					// for ANY fatal underlying FS erorr try 3 more times... 
++					// try to create a temp directory try 3 times if there is any failure then do not try...
++					while(retry > 0 && !result){
++						result = fs.exists(destinationTemp);
++						if(!result){
++							result = fs.mkdirs(destinationTemp);
++						}
++					}
++					return result;
++				}
++				
++			};
++			boolean tempDirectoryCreated = false;
++			try {
++				tempDirectoryCreated = retryFileCheck.getResult(tempDirExists);
++			} catch (Exception e) {
++				log.error("Could not commit file due to error exit....",e);
++				// this will cause entire Mapper task to fail so we can start from last offset again  three for no data loss ???
++				throw new RuntimeException("Temp Folder Creation failed...",e);
++			}
++			
++			if(tempDirectoryCreated){
++				//now try to move this file to temp folder...
++				
++				try {
++					final CopyToTempTask copyToTempDir = new CopyToTempTask(tempLocation, source, fs, log);
++					// now we have copied to respective volume so let try to rename it....this should not fail at all ....
++					final boolean copyToTempFolderFile = retryFileCheck.getResult(copyToTempDir);
++					if(copyToTempFolderFile){
++						final Delegate<Boolean> renameFromTempToFinalDestination = new RetryLogic.Delegate<Boolean>() {
++							@Override
++							public Boolean call() throws Exception {
++								int retry = 3;
++								boolean result = false;
++								do{
++									try{
++										result = fs.rename(copyToTempDir.getTempPath(),target);
++										if(!result){
++											log.error("Failed to commit the file to final destination ="+target.toString() + " and temp path="+copyToTempDir.getTempPath().toString());
++											if(!fs.exists(copyToTempDir.getTempPath())){
++												// should we retry copy cmd here ...?
++												log.error("Final temp path="+copyToTempDir.getTempPath().toString() + " does not exits so giveup.");
++												break;
++											}
++										}
++							
++									}catch(IOException e){
++										log.error("IOException while rename to final target name = "+target.getName(),e);
++									}
++									retry--;
++								}while(!result && retry > 0);
++								return result;
++							}
++								
++						};
++						
++						final boolean finalResult = retryFileCheck.getResult(renameFromTempToFinalDestination);
++						if(finalResult){
++							// it is ok if it does not get deleted since we have directory clean up will take care of it...
++							boolean delte = fs.delete(source,true);
++							if(!delte){
++								fs.deleteOnExit(source);
++							}
++						}else{
++							String message =  "File can not be commited at this movement so lets try next time due to underlying FileSystem erorr. Error is trown so offset does not advance, hence no data loss.\n"+
++											  "source=" + source.toString() + " \n" +
++											  "final target= " + target.toString() + "\n";
++							
++							log.error(message);
++							throw new RuntimeException(message);
++						}
++					}
++				} catch (Exception e) {
++					if(e instanceof RuntimeException){
++						log.error("Giving up commit rename since the copy failed" + source.toString() +" and to=" + tempLocation,e);
++						throw (RuntimeException)e;
++					}else{
++						log.error("Giving up commit rename since the copy failed" + source.toString() +" and to=" + tempLocation,e);
++						throw new RuntimeException("Giving up commit since the copy failed" + source.toString() +" and to=" + tempLocation,e);
++					}
++				}
++			}
++			
++			}finally{
++				// finally delete the temp location....
++				 //partition_month_utc=2015-03/partition_day_utc=2015-03-11/partition_minute_bucket=2015-03-11-02-09/_temporary/_attempt_201503102148_0007_m_000017_0
++				//temp dir for this map task...
++				Path tempDir = new Path(tempLocation);
++				if(fs.exists(tempDir)){
++					boolean tempLocationDel =  fs.delete(new Path(tempLocation), true);
++					if(!tempLocationDel){
++						// give second chance for the deleting the tempDir...by the hadoop framework if it failed......
++						fs.deleteOnExit(tempDir);
++					}
++				}
++				long duration = System.currentTimeMillis() - startTime;
++				log.info("Finish copy-rename-commit at " +  new Date() + " and duration (ms) is " + duration );
++				CamusJob.stopTiming("copy-rename-commit");
++			}
++		}
++		else {
++			// This is default behavior out of box adding more 
++			// should we retry if rename fails here and remove the data...
++			try{
++				boolean result = FileSystem.get(job.getConfiguration()).rename(source, target);
++				if(!result){
++				    /*
++				     * We do not want silent failure...:  should we do the Md5 or CRC checksum ..?
++				     *  Based on feedback please refer to https://github.com/linkedin/camus/issues/189
++				     *  We do not throw exception data will be lost..
++				     */					
++					String msg = "Could not rename a File during Commit Phase due to underlying File System reutrn false result: soruce=" + source.toString() +" to target=" + target.toString();
++					log.error(msg);
++					throw new IOException(msg);
++				}
++			}catch(Throwable e){
++				log.error("File Rename Failed from= " + source.getName() +" to=" + target.getName() , e);
++				throw new RuntimeException("Default Behavior file commit failed due to fatal problem",e);
++			}
++		}
++    }
++
++	static class CopyToTempTask implements RetryLogic.Delegate<Boolean> {
++		
++		
++		private Path tempFilePath;
++		private String tempLocation;
++		private Path source;
++		private FileSystem fs;
++		// TODO Why logger is not static per class ... why instance variable ...?
++		private Logger log;
++		
++		
++		CopyToTempTask(String tempLocation, Path source, FileSystem fs, Logger log  ){
++			this.tempLocation = tempLocation;
++			this.source = source;
++			this.fs = fs;
++			this.log = log;
++		}
++		
++		@Override
++		public Boolean call() throws Exception {
++			Path destinationTemp = new Path(tempLocation + "/" + source.getName());
++			boolean result = false;
++			int retry = 3;
++			// for ANY fatal underlying FS error try 3 more times... 
++			// try to create a temp directory try 3 times if there is any failure then do not try...
++			while(retry > 0 && !result){
++				Path origDestinationTemp = new Path(destinationTemp.toString());
++				try{
++					result = FileUtil.copy(fs, source, fs,
++							destinationTemp, false, fs.getConf());
++					tempFilePath = destinationTemp;
++					
++					if(!result){
++						log.error("Failed rename to temp destination Path so delete it : " + destinationTemp.toString());
++						// if result is failure then lets delete it now...
++						boolean deleted = fs.delete(destinationTemp,true);
++						if(!deleted){
++							// let see if hadoop framework can delete this..otherwise this will be garbage sitting here for ever and ever...TODO ????
++							fs.deleteOnExit(destinationTemp);
++							// try new path...
++							destinationTemp = new Path(destinationTemp.toString() + "-"+retry);
++						}
++					}
++				}catch(IOException e){
++					log.error("Error while copy to temp location from=" + source.toString() +" and to=" + origDestinationTemp.toString(),e);
++					try{
++						// try to close file and delete it... TODO Review this....
++						fs.create(origDestinationTemp,true).close();
++						fs.delete(origDestinationTemp, true);
++					}catch(Throwable th){
++						log.error("Error delete while copy to temp location from=" + source.toString() +" and to=" + origDestinationTemp.toString(),e);								}
++					
++				}
++			}
++			return result;
++		}
++		
++		public Path getTempPath(){
++			return tempFilePath;
++		}
++	}
+ 
+   public String getPartitionedPath(JobContext context, String file, int count, long offset) throws IOException {
+     Matcher m = workingFileMetadataPattern.matcher(file);
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputFormat.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputFormat.java
+index fda0250..e850779 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputFormat.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputFormat.java
+@@ -48,6 +48,8 @@ public class EtlMultiOutputFormat extends FileOutputFormat<EtlKey, Object> {
+   public static final String ETL_OUTPUT_CODEC = "etl.output.codec";
+   public static final String ETL_DEFAULT_OUTPUT_CODEC = "deflate";
+   public static final String ETL_RECORD_WRITER_PROVIDER_CLASS = "etl.record.writer.provider.class";
++  public static final String ETL_RECORD_WRITER_TWO_STEPS_COPY_TO_TEMP_AND_RENAME = "etl.output.two.steps.commit.copyToTemp.and.rename";
++
+ 
+   public static final DateTimeFormatter FILE_DATE_FORMATTER = DateUtils.getDateTimeFormatter("YYYYMMddHH");
+   public static final String OFFSET_PREFIX = "offsets";
+@@ -60,12 +62,31 @@ public class EtlMultiOutputFormat extends FileOutputFormat<EtlKey, Object> {
+ 
+   private static Logger log = Logger.getLogger(EtlMultiOutputFormat.class);
+ 
++
+   @Override
+-  public RecordWriter<EtlKey, Object> getRecordWriter(TaskAttemptContext context) throws IOException,
+-      InterruptedException {
+-    if (committer == null)
+-      committer = new EtlMultiOutputCommitter(getOutputPath(context), context, log);
+-    return new EtlMultiOutputRecordWriter(context, committer);
++  public RecordWriter<EtlKey, Object> getRecordWriter(TaskAttemptContext context)
++          throws IOException, InterruptedException {
++  	
++  	/**
++  	 * This is double locking check but have to be done so we do not have two Committer may cause this error.
++  	 *  http://en.wikipedia.org/wiki/Double-checked_locking but this should be fine
++  	 *  
++  	 *  http://www.javamex.com/tutorials/double_checked_locking_fixing.shtml
++  	 *  Please refer see section "3. Use DCL plus volatile"
++  	 *  
++  	 *  I can not use the lazy or early load since I need "context" to instantiate object... 
++  	 *  
++  	 *  We want to ensure that there is only one and only object for this ETL JOB...
++  	 *  
++  	 */
++      if (committer == null){
++      	synchronized (EtlMultiOutputFormat.class) {
++				if(committer == null){
++		            committer = new EtlMultiOutputCommitter(getOutputPath(context), context, log);
++				}
++			}
++      }
++      return new EtlMultiOutputRecordWriter(context, committer);
+   }
+ 
+   @Override
+@@ -178,7 +199,9 @@ public class EtlMultiOutputFormat extends FileOutputFormat<EtlKey, Object> {
+   public static void setRunTrackingPost(JobContext job, boolean value) {
+     job.getConfiguration().setBoolean(ETL_RUN_TRACKING_POST, value);
+   }
+-
++  public static boolean isCopyAndRenameFinalDestination(JobContext job){
++      return job.getConfiguration().getBoolean(ETL_RECORD_WRITER_TWO_STEPS_COPY_TO_TEMP_AND_RENAME, false);
++  }
+   public static String getWorkingFileName(JobContext context, EtlKey key) throws IOException {
+     Partitioner partitioner = getPartitioner(context, key.getTopic());
+     return partitioner.getWorkingFileName(context, key.getTopic(), key.getLeaderId(), key.getPartition(),
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputRecordWriter.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputRecordWriter.java
+index d325669..bcfc914 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputRecordWriter.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/EtlMultiOutputRecordWriter.java
+@@ -4,7 +4,9 @@ import java.io.IOException;
+ import java.lang.reflect.Constructor;
+ import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Method;
++import java.util.ArrayList;
+ import java.util.HashMap;
++import java.util.List;
+ 
+ import org.apache.hadoop.fs.FileSystem;
+ import org.apache.hadoop.fs.Path;
+@@ -20,10 +22,11 @@ import org.joda.time.DateTime;
+ import com.linkedin.camus.coders.CamusWrapper;
+ import com.linkedin.camus.etl.IEtlKey;
+ import com.linkedin.camus.etl.RecordWriterProvider;
++import com.linkedin.camus.etl.RecordWriterWithCloseStatus;
+ import com.linkedin.camus.etl.kafka.common.EtlKey;
+ import com.linkedin.camus.etl.kafka.common.ExceptionWritable;
+ 
+-
++@SuppressWarnings("rawtypes")
+ public class EtlMultiOutputRecordWriter extends RecordWriter<EtlKey, Object> {
+   private TaskAttemptContext context;
+   private Writer errorWriter = null;
+@@ -32,8 +35,9 @@ public class EtlMultiOutputRecordWriter extends RecordWriter<EtlKey, Object> {
+   private static Logger log = Logger.getLogger(EtlMultiOutputRecordWriter.class);
+   private final Counter topicSkipOldCounter;
+ 
+-  private HashMap<String, RecordWriter<IEtlKey, CamusWrapper>> dataWriters =
+-      new HashMap<String, RecordWriter<IEtlKey, CamusWrapper>>();
++
++  private HashMap<String, RecordWriterWithCloseStatus<IEtlKey, CamusWrapper>> dataWriters =
++      new HashMap<String, RecordWriterWithCloseStatus<IEtlKey, CamusWrapper>>();
+ 
+   private EtlMultiOutputCommitter committer;
+ 
+@@ -82,10 +86,57 @@ public class EtlMultiOutputRecordWriter extends RecordWriter<EtlKey, Object> {
+ 
+   @Override
+   public void close(TaskAttemptContext context) throws IOException, InterruptedException {
+-    for (String w : dataWriters.keySet()) {
+-      dataWriters.get(w).close(context);
+-    }
+-    errorWriter.close();
++		// this is another soruce of unclosed files being
++		ListOfIOException listExp = new ListOfIOException(
++				"List Of IOException while closing output file...");
++		for (String w : dataWriters.keySet()) {
++			try {
++				RecordWriterWithCloseStatus writter = dataWriters.get(w);
++				writter.close(context);
++				if(!writter.isClose()){
++					log.error("Atteptem to close the file name "+ w +" but it did not close.");
++				}
++			} catch (IOException exp) {
++				log.error("Error closing writer..", exp);
++				listExp.addIOException(exp);
++			}
++		}
++
++		try {
++			errorWriter.close();
++		} catch (IOException e) {
++			listExp.addIOException(e);
++		}
++		
++		if(listExp.isThereException()){
++			throw listExp;
++		}
++		
++  }
++  
++  static final class ListOfIOException extends IOException {
++	
++	private static final long serialVersionUID = 1L;
++	private List<IOException> exceptionList = new ArrayList<IOException>();
++	
++	ListOfIOException(String message) {
++		super(message);
++	}
++	
++	public void addIOException(IOException exp){
++		exceptionList.add(exp);
++	}
++	
++	public boolean isThereException(){
++		return !exceptionList.isEmpty();
++	}
++	
++	@Override
++	public String toString() {
++		// TODO should we print all the IOEceptions....
++		return super.toString() + " There were about "+  exceptionList.size() + " IOException. please check the logs for this task";
++	}
++	
+   }
+ 
+   @Override
+@@ -105,7 +156,6 @@ public class EtlMultiOutputRecordWriter extends RecordWriter<EtlKey, Object> {
+           dataWriters.clear();
+           currentTopic = key.getTopic();
+         }
+-
+         committer.addCounts(key);
+         CamusWrapper value = (CamusWrapper) val;
+         String workingFileName = EtlMultiOutputFormat.getWorkingFileName(context, key);
+@@ -124,21 +174,25 @@ public class EtlMultiOutputRecordWriter extends RecordWriter<EtlKey, Object> {
+     }
+   }
+ 
+-  private RecordWriter<IEtlKey, CamusWrapper> getDataRecordWriter(TaskAttemptContext context, String fileName,
+-      CamusWrapper value) throws IOException, InterruptedException {
+-    RecordWriterProvider recordWriterProvider = null;
+-    try {
+-      //recordWriterProvider = EtlMultiOutputFormat.getRecordWriterProviderClass(context).newInstance();
+-      Class<RecordWriterProvider> rwp = EtlMultiOutputFormat.getRecordWriterProviderClass(context);
+-      Constructor<RecordWriterProvider> crwp = rwp.getConstructor(TaskAttemptContext.class);
+-      recordWriterProvider = crwp.newInstance(context);
+-    } catch (InstantiationException e) {
+-      throw new IllegalStateException(e);
+-    } catch (IllegalAccessException e) {
+-      throw new IllegalStateException(e);
+-    } catch (Exception e) {
+-      throw new IllegalStateException(e);
+-    }
+-    return recordWriterProvider.getDataRecordWriter(context, fileName, value, committer);
+-  }
++  private RecordWriterWithCloseStatus<IEtlKey, CamusWrapper> getDataRecordWriter(
++			TaskAttemptContext context, String fileName, CamusWrapper value)
++			throws IOException, InterruptedException {
++		RecordWriterProvider recordWriterProvider = null;
++		try {
++			Class<RecordWriterProvider> rwp = EtlMultiOutputFormat
++					.getRecordWriterProviderClass(context);
++			Constructor<RecordWriterProvider> crwp = rwp
++					.getConstructor(TaskAttemptContext.class);
++			recordWriterProvider = crwp.newInstance(context);
++		} catch (InstantiationException e) {
++			throw new IllegalStateException(e);
++		} catch (IllegalAccessException e) {
++			throw new IllegalStateException(e);
++		} catch (Exception e) {
++			throw new IllegalStateException(e);
++		}
++		return recordWriterProvider.getDataRecordWriter(context, fileName,
++				value, committer);
++	}
++
+ }
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/RetryLogic.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/RetryLogic.java
+new file mode 100644
+index 0000000..079cec1
+--- /dev/null
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/mapred/RetryLogic.java
+@@ -0,0 +1,60 @@
++package com.linkedin.camus.etl.kafka.mapred;
++
++import java.util.concurrent.TimeUnit;
++
++import org.apache.log4j.Logger;
++
++/**
++ * http://stackoverflow.com/questions/9539845/java-how-to-handle-retries-without-copy-paste-code
++ * 
++ * Generic retry logic. Delegate must throw the specified exception type to
++ * trigger the retry logic.
++ */
++public class RetryLogic<T> {
++	
++	
++	public static interface Delegate<T> {
++		T call() throws Exception;
++	}
++
++	private int maxAttempts;
++	private long retryWaitInMs;
++	private Logger logger;
++
++	public RetryLogic(int maxAttempts, long retryWait,TimeUnit timeUnit,Logger logger) {
++		this.maxAttempts = maxAttempts;
++		if(TimeUnit.MILLISECONDS != timeUnit){
++			this.retryWaitInMs = timeUnit.toMillis(retryWait);
++		}else{
++			this.retryWaitInMs = retryWait;
++		}
++		this.logger = logger;
++	}
++
++	public T getResult(Delegate<T> caller) throws Exception {
++		T result = null;
++		int remainingAttempts = maxAttempts;
++		do {
++			try {
++				result = caller.call();
++			} catch (Throwable e) {
++				if (--remainingAttempts == 0) {
++					this.logger.error("ERROR can not recover from the fatal error after " +maxAttempts+ " attempt(s)",e);
++					throw new Exception("Retries exausted.",e);
++				} else {
++					if(retryWaitInMs > 0){
++						this.logger.warn("WARN Retrying again due to fatal erorr",e);
++
++						try {
++							Thread.sleep(retryWaitInMs);
++						} catch (InterruptedException ie) {
++							// Should we ignore this ...?
++						}
++					}
++				}
++				
++			}
++		} while (result == null && remainingAttempts > 0);
++		return result;
++	}
++}
+\ No newline at end of file
+diff --git a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/reporter/BaseReporter.java b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/reporter/BaseReporter.java
+index b9da382..c3cb65c 100644
+--- a/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/reporter/BaseReporter.java
++++ b/camus-etl-kafka/src/main/java/com/linkedin/camus/etl/kafka/reporter/BaseReporter.java
+@@ -1,8 +1,7 @@
+ package com.linkedin.camus.etl.kafka.reporter;
+ 
+-import java.util.Map;
+ import java.io.IOException;
+-import org.apache.log4j.Logger;
++import java.util.Map;
+ 
+ import org.apache.hadoop.mapreduce.Job;
+ 
+@@ -11,7 +10,7 @@ public abstract class BaseReporter {
+   public static org.apache.log4j.Logger log;
+ 
+   public BaseReporter() {
+-    this.log = org.apache.log4j.Logger.getLogger(BaseReporter.class);
++    log = org.apache.log4j.Logger.getLogger(BaseReporter.class);
+   }
+ 
+   public abstract void report(Job job, Map<String, Long> timingMap) throws IOException;
+diff --git a/camus-example/pom.xml b/camus-example/pom.xml
+index 86b47e8..8befa4d 100644
+--- a/camus-example/pom.xml
++++ b/camus-example/pom.xml
+@@ -1,11 +1,10 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+ 
+   <parent>
+     <groupId>com.linkedin.camus</groupId>
+     <artifactId>camus-parent</artifactId>
+-    <version>0.1.0-SNAPSHOT</version>
++    <version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+   </parent>
+ 
+   <artifactId>camus-example</artifactId>
+@@ -29,14 +28,18 @@
+       <groupId>org.apache.avro</groupId>
+       <artifactId>avro</artifactId>
+     </dependency>
+-    <dependency>
+-      <groupId>org.apache.hadoop</groupId>
+-      <artifactId>hadoop-mapreduce-client-common</artifactId>
+-    </dependency>
+-    <dependency>
+-      <groupId>org.apache.hadoop</groupId>
+-      <artifactId>hadoop-common</artifactId>
+-    </dependency>
++<!--     <dependency> -->
++<!--       <groupId>org.apache.hadoop</groupId> -->
++<!--       <artifactId>hadoop-mapreduce-client-common</artifactId> -->
++<!--     </dependency> -->
++<!--     <dependency> -->
++<!--       <groupId>org.apache.hadoop</groupId> -->
++<!--       <artifactId>hadoop-common</artifactId> -->
++<!--     </dependency> -->
++<dependency>
++    <groupId>org.apache.hadoop</groupId> 
++    <artifactId>hadoop-client</artifactId>
++</dependency>
+     <dependency>
+       <groupId>org.easymock</groupId>
+       <artifactId>easymock</artifactId>
+@@ -84,4 +87,4 @@
+     </plugins>
+   </build>
+ 
+-</project>
+\ No newline at end of file
++</project>
+diff --git a/camus-kafka-coders/pom.xml b/camus-kafka-coders/pom.xml
+index ffd6869..a61c68f 100644
+--- a/camus-kafka-coders/pom.xml
++++ b/camus-kafka-coders/pom.xml
+@@ -1,11 +1,10 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+ 	<modelVersion>4.0.0</modelVersion>
+ 
+ 	<parent>
+ 		<groupId>com.linkedin.camus</groupId>
+ 		<artifactId>camus-parent</artifactId>
+-		<version>0.1.0-SNAPSHOT</version>
++		<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+ 	</parent>
+ 
+ 	<artifactId>camus-kafka-coders</artifactId>
+diff --git a/camus-schema-registry-avro/pom.xml b/camus-schema-registry-avro/pom.xml
+index 7ec13bb..bebaad2 100644
+--- a/camus-schema-registry-avro/pom.xml
++++ b/camus-schema-registry-avro/pom.xml
+@@ -1,11 +1,10 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+ 
+   <parent>
+     <groupId>com.linkedin.camus</groupId>
+     <artifactId>camus-parent</artifactId>
+-    <version>0.1.0-SNAPSHOT</version>
++    <version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+   </parent>
+ 
+   <artifactId>camus-schema-registry-avro</artifactId>
+@@ -28,6 +27,8 @@
+     <dependency>
+       <groupId>org.apache.avro</groupId>
+       <artifactId>avro-repo-bundle</artifactId>
++<!--       <scope>system</scope> -->
++<!--       <systemPath>/Users/bmistr1/Documents/code/camus-platform/camus/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.jar</systemPath> -->
+     </dependency>
+     <dependency>
+       <groupId>junit</groupId>
+diff --git a/camus-schema-registry/pom.xml b/camus-schema-registry/pom.xml
+index 1927f46..9735067 100644
+--- a/camus-schema-registry/pom.xml
++++ b/camus-schema-registry/pom.xml
+@@ -1,11 +1,10 @@
+-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+ 
+   <parent>
+     <groupId>com.linkedin.camus</groupId>
+     <artifactId>camus-parent</artifactId>
+-    <version>0.1.0-SNAPSHOT</version>
++    <version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+   </parent>
+ 
+   <artifactId>camus-schema-registry</artifactId>
+diff --git a/camus-sweeper/pom.xml b/camus-sweeper/pom.xml
+index ddc6e3a..b58d838 100644
+--- a/camus-sweeper/pom.xml
++++ b/camus-sweeper/pom.xml
+@@ -4,12 +4,11 @@
+ 	<groupId>com.linkedin.camus</groupId>
+ 	<artifactId>camus-sweeper</artifactId>
+ 	<name>Camus compaction code small files produced Camus</name>
+-	<version>0.1.0-SNAPSHOT</version>
+-	
++	<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+ 	<parent>
+ 		<groupId>com.linkedin.camus</groupId>
+ 		<artifactId>camus-parent</artifactId>
+-		<version>0.1.0-SNAPSHOT</version>
++		<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
+ 	</parent>
+ 
+ 	<dependencies>
+@@ -57,7 +56,7 @@
+ 			<plugin>
+ 				<groupId>org.apache.maven.plugins</groupId>
+ 				<artifactId>maven-shade-plugin</artifactId>
+-				<version>1.7.1</version>
++				<version>2.3</version>
+ 				<executions>
+ 					<execution>
+ 						<phase>package</phase>
+@@ -81,4 +80,4 @@
+ 		</plugins>
+ 	</build>
+ 
+-</project>
+\ No newline at end of file
++</project>
+diff --git a/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.xml b/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.xml
+index 87c22fa..50b08b0 100644
+--- a/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.xml
++++ b/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.xml
+@@ -5,7 +5,7 @@
+   <modelVersion>4.0.0</modelVersion>
+ 
+   <groupId>org.apache.avro</groupId>
+-  <version>1.7.4-SNAPSHOT</version>
++  <version>1.7.4-wmplat1</version>
+   <artifactId>avro-repo-bundle</artifactId>
+ 
+ </project>
+diff --git a/pom.xml b/pom.xml
+index 35024ab..393a233 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -1,246 +1,253 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+-  <modelVersion>4.0.0</modelVersion>
++	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
++	<modelVersion>4.0.0</modelVersion>
++	<prerequisites>
++		<maven>3.0.0</maven>
++	</prerequisites>
++	<groupId>com.linkedin.camus</groupId>
++	<artifactId>camus-parent</artifactId>
++	<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
++	<packaging>pom</packaging>
++	<name>Camus Parent</name>
++	<description>
++    Camus is LinkedIn's Kafka-&gt;HDFS pipeline. It is a mapreduce job that does distributed data loads out of Kafka.
++  </description>
++	<url>https://github.com/linkedin/camus</url>
+ 
+-  <prerequisites>
+-    <maven>3.0.0</maven>
+-  </prerequisites>
++	<properties>
++		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
++	</properties>
+ 
+-  <groupId>com.linkedin.camus</groupId>
+-  <artifactId>camus-parent</artifactId>
+-  <version>0.1.0-SNAPSHOT</version>
+-  <packaging>pom</packaging>
+-  <name>Camus Parent</name>
+-  <description>
+-    Camus is LinkedIn's Kafka->HDFS pipeline. It is a mapreduce job that does distributed data loads out of Kafka.
+-  </description>
+-  <url>https://github.com/linkedin/camus</url>
++	<dependencyManagement>
++		<dependencies>
++			<dependency>
++				<groupId>com.linkedin.camus</groupId>
++				<artifactId>camus-api</artifactId>
++				<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
++			</dependency>
++			<dependency>
++				<groupId>com.linkedin.camus</groupId>
++				<artifactId>camus-etl-kafka</artifactId>
++				<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
++			</dependency>
++			<dependency>
++				<groupId>com.linkedin.camus</groupId>
++				<artifactId>camus-kafka-coders</artifactId>
++				<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
++			</dependency>
++			<dependency>
++				<groupId>com.linkedin.camus</groupId>
++				<artifactId>camus-schema-registry</artifactId>
++				<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
++			</dependency>
++			<dependency>
++				<groupId>com.linkedin.camus</groupId>
++				<artifactId>camus-schema-registry</artifactId>
++				<version>0.1.0-wmplat1.1-EOF-FIX-SNAPSHOT</version>
++				<type>test-jar</type>
++				<scope>test</scope>
++			</dependency>
++			<dependency>
++				<groupId>log4j</groupId>
++				<artifactId>log4j</artifactId>
++				<version>1.2.17</version>
++			</dependency>
++			<dependency>
++				<groupId>org.apache.avro</groupId>
++				<artifactId>avro</artifactId>
++				<version>1.7.7</version>
++			</dependency>
++			<dependency>
++				<groupId>org.apache.avro</groupId>
++				<artifactId>avro-mapred</artifactId>
++				<version>1.7.7</version>
++			</dependency>
++			<dependency>
++				<groupId>org.apache.avro</groupId>
++				<version>1.7.4-SNAPSHOT</version>
++				<artifactId>avro-repo-bundle</artifactId>
++			</dependency>
++			<dependency>
++				<groupId>joda-time</groupId>
++				<artifactId>joda-time</artifactId>
++				<version>1.6.2</version>
++			</dependency>
++			<dependency>
++				<groupId>org.apache.hadoop</groupId>
++				<artifactId>hadoop-client</artifactId>
++				<version>1.0.3</version>
++			</dependency>
+ 
+-  <properties>
+-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+-  </properties>
++			<dependency>
++				<groupId>org.easymock</groupId>
++				<artifactId>easymock</artifactId>
++				<version>3.3.1</version>
++			</dependency>
++			<dependency>
++				<groupId>org.apache.kafka</groupId>
++				<artifactId>kafka_2.10</artifactId>
++				<version>0.8.0</version>
++				<exclusions>
++					<exclusion>
++						<groupId>org.slf4j</groupId>
++						<artifactId>slf4j-simple</artifactId>
++					</exclusion>
++					<exclusion>
++						<groupId>org.scala-lang</groupId>
++						<artifactId>scala-compiler</artifactId>
++					</exclusion>
++				</exclusions>
++			</dependency>
++			<dependency>
++				<groupId>com.github.sgroschupf</groupId>
++				<artifactId>zkclient</artifactId>
++				<version>0.1</version>
++			</dependency>
++			<dependency>
++				<groupId>org.apache.zookeeper</groupId>
++				<artifactId>zookeeper</artifactId>
++				<version>3.3.4</version>
++			</dependency>
++			<dependency>
++				<groupId>junit</groupId>
++				<artifactId>junit</artifactId>
++				<version>4.8.1</version>
++			</dependency>
++			<dependency>
++				<groupId>org.scala-lang</groupId>
++				<artifactId>scala-library</artifactId>
++				<version>2.10.3</version>
++			</dependency>
++			<dependency>
++				<groupId>org.xerial.snappy</groupId>
++				<artifactId>snappy-java</artifactId>
++				<version>1.0.4.1</version>
++			</dependency>
++			<dependency>
++				<groupId>com.google.code.gson</groupId>
++				<artifactId>gson</artifactId>
++				<version>2.2.4</version>
++			</dependency>
++			<dependency>
++				<groupId>commons-httpclient</groupId>
++				<artifactId>commons-httpclient</artifactId>
++				<version>3.0.1</version>
++			</dependency>
++		</dependencies>
++	</dependencyManagement>
+ 
+-  <dependencyManagement>
+-    <dependencies>
+-      <dependency>
+-        <groupId>com.linkedin.camus</groupId>
+-	<artifactId>camus-api</artifactId>
+-	<version>0.1.0-SNAPSHOT</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>com.linkedin.camus</groupId>
+-	<artifactId>camus-etl-kafka</artifactId>
+-	<version>0.1.0-SNAPSHOT</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>com.linkedin.camus</groupId>
+-	<artifactId>camus-kafka-coders</artifactId>
+-	<version>0.1.0-SNAPSHOT</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>com.linkedin.camus</groupId>
+-	<artifactId>camus-schema-registry</artifactId>
+-	<version>0.1.0-SNAPSHOT</version>
+-      </dependency>		
+-      <dependency>
+-	<groupId>com.linkedin.camus</groupId>
+-	<artifactId>camus-schema-registry</artifactId>
+-	<version>0.1.0-SNAPSHOT</version>
+-	<type>test-jar</type>
+-	<scope>test</scope>
+-      </dependency>
+-      <dependency>
+-	<groupId>log4j</groupId>
+-	<artifactId>log4j</artifactId>
+-	<version>1.2.17</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.avro</groupId>
+-	<artifactId>avro</artifactId>
+-	<version>1.7.7</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.avro</groupId>
+-	<artifactId>avro-mapred</artifactId>
+-	<version>1.7.7</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.avro</groupId>
+-	<version>1.7.4-SNAPSHOT</version>
+-	<artifactId>avro-repo-bundle</artifactId>
+-      </dependency>
+-      <dependency>
+-	<groupId>joda-time</groupId>
+-	<artifactId>joda-time</artifactId>
+-	<version>1.6.2</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.hadoop</groupId>
+-	<artifactId>hadoop-mapreduce-client-core</artifactId>
+-	<version>2.3.0</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.hadoop</groupId>
+-	<artifactId>hadoop-mapreduce-client-common</artifactId>
+-	<version>2.3.0</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.hadoop</groupId>
+-	<artifactId>hadoop-common</artifactId>
+-	<version>2.3.0</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.easymock</groupId>
+-        <artifactId>easymock</artifactId>
+-        <version>3.3.1</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.kafka</groupId>
+-	<artifactId>kafka_2.10</artifactId>
+-	<version>0.8.0</version>
+-	<exclusions>
+-          <exclusion>
+-            <groupId>org.slf4j</groupId>
+-            <artifactId>slf4j-simple</artifactId>
+-          </exclusion>
+-	  <exclusion>
+-	    <groupId>org.scala-lang</groupId>
+-            <artifactId>scala-compiler</artifactId>
+-          </exclusion>
+-	</exclusions>
+-      </dependency>
+-      <dependency>
+-	<groupId>com.github.sgroschupf</groupId>
+-	<artifactId>zkclient</artifactId>
+-	<version>0.1</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.apache.zookeeper</groupId>
+-	<artifactId>zookeeper</artifactId>
+-	<version>3.3.4</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>junit</groupId>
+-	<artifactId>junit</artifactId>
+-	<version>4.8.1</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.scala-lang</groupId>
+-	<artifactId>scala-library</artifactId>
+-	<version>2.10.3</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>org.xerial.snappy</groupId>
+-	<artifactId>snappy-java</artifactId>
+-	<version>1.0.4.1</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>com.google.code.gson</groupId>
+-	<artifactId>gson</artifactId>
+-	<version>2.2.4</version>
+-      </dependency>
+-      <dependency>
+-	<groupId>commons-httpclient</groupId>
+-	<artifactId>commons-httpclient</artifactId>
+-	<version>3.0.1</version>
+-      </dependency>
+-    </dependencies>
+-  </dependencyManagement>
++	<scm>
++		<connection>scm:git:git@gecgithub01.walmart.com:platform/camus.git</connection>
++		<developerConnection>scm:git:git@gecgithub01.walmart.com:platform/camus.git</developerConnection>
++		<url>http://github.com/linkedin/camus/</url>
++		<tag>HEAD</tag>
++	</scm>
+ 
+-  <modules>
+-    <module>camus-api</module>
+-    <module>camus-kafka-coders</module>
+-    <module>camus-etl-kafka</module>
+-    <module>camus-schema-registry</module>
+-    <module>camus-schema-registry-avro</module>
+-    <module>camus-example</module>
+-    <module>camus-sweeper</module>
+-  </modules>
++	<modules>
++		<module>camus-api</module>
++		<module>camus-kafka-coders</module>
++		<module>camus-etl-kafka</module>
++		<module>camus-schema-registry</module>
++		<module>camus-schema-registry-avro</module>
++		<module>camus-example</module>
++		<module>camus-sweeper</module>
++	</modules>
+ 
+-  <licenses>
+-    <license>
+-      <name>Apache License 2.0</name>
+-      <url>http://www.apache.org/licenses/LICENSE-2.0.html</url>
+-      <distribution>repo</distribution>
+-    </license>
+-  </licenses>
++	<licenses>
++		<license>
++			<name>Apache License 2.0</name>
++			<url>http://www.apache.org/licenses/LICENSE-2.0.html</url>
++			<distribution>repo</distribution>
++		</license>
++	</licenses>
+ 
+-  <scm>
+-    <connection>scm:git:git://github.com/linkedin/camus.git</connection>
+-    <developerConnection>scm:git:git@github.com:linkedin/camus.git</developerConnection>
+-    <url>http://github.com/linkedin/camus/</url>
+-  </scm>
++	<distributionManagement>
++		<repository>
++			<id>pangaea_releases</id>
++			<url>http://gec-maven-nexus.walmart.com/nexus/content/repositories/pangaea_releases</url>
++			<uniqueVersion>true</uniqueVersion>
++		</repository>
++		<snapshotRepository>
++			<id>pangaea_snapshots</id>
++			<url>http://gec-maven-nexus.walmart.com/nexus/content/repositories/pangaea_snapshots</url>
++			<uniqueVersion>false</uniqueVersion>
++		</snapshotRepository>
++	</distributionManagement>
+ 
+-  <issueManagement>
+-    <system>github</system>
+-    <url>http://github.com/linkedin/camus/issues</url>
+-  </issueManagement>
++	<!-- <repositories> <repository> <id>apache-releases</id> <url>https://repository.apache.org/content/groups/public</url> 
++		</repository> </repositories> -->
+ 
+-  <repositories>
+-    <repository>
+-      <id>apache-releases</id>
+-        <url>https://repository.apache.org/content/groups/public</url>
+-    </repository>
+-  </repositories>
+ 
+-  <build>
+-    <plugins>
+-      <plugin>
+-	<groupId>org.apache.maven.plugins</groupId>
+-	<artifactId>maven-jar-plugin</artifactId>
+-	<version>2.2</version>
+-	<executions>
+-	  <execution>
+-	    <goals>
+-	      <goal>test-jar</goal>
+-	    </goals>
+-	  </execution>
+-	</executions>
+-      </plugin>
+-      <plugin>
+-	<artifactId>maven-install-plugin</artifactId>
+-	<version>2.3.1</version>
+-	<inherited>false</inherited>
+-	<executions>
+-	  <execution>
+-	    <id>install-avro-repo-client</id>
+-	    <phase>validate</phase>
+-	    <goals>
+-	      <goal>install-file</goal>
+-	    </goals>
+-	    <configuration>
+-	      <groupId>org.apache.avro</groupId>
+-	      <artifactId>avro-repo-bundle</artifactId>
+-	      <version>1.7.4-SNAPSHOT</version>
+-	      <packaging>jar</packaging>
+-	      <file>${basedir}/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.jar</file>
+-	      <pomFile>${basedir}/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.xml</pomFile>
+-	    </configuration>
+-	  </execution>
+-        </executions>
+-      </plugin>
+-      <plugin>
+-	<groupId>org.apache.maven.plugins</groupId>
+-	<artifactId>maven-surefire-plugin</artifactId>
+-	<version>2.12.4</version>
+-	<configuration>
+-	  <argLine>-Djava.awt.headless=true</argLine>
+-	</configuration>
+-      </plugin>
+-      <plugin>
+-	<groupId>org.apache.maven.plugins</groupId>
+-	<artifactId>maven-compiler-plugin</artifactId>
+-	<version>3.1</version>
+-	<configuration>
+-	  <source>1.6</source>
+-	  <target>1.6</target>
+-	  <encoding>UTF-8</encoding>
+-	  <compilerArgs>
+-	    <arg>-J-Djava.awt.headless=true</arg>
+-	  </compilerArgs>
+-	</configuration>
+-      </plugin>
+-    </plugins>
+-  </build>
++	<build>
++		<plugins>
++			<plugin>
++				<groupId>org.apache.maven.plugins</groupId>
++				<artifactId>maven-jar-plugin</artifactId>
++				<version>2.2</version>
++				<executions>
++					<execution>
++						<goals>
++							<goal>test-jar</goal>
++						</goals>
++					</execution>
++				</executions>
++			</plugin>
++			<plugin>
++				<artifactId>maven-install-plugin</artifactId>
++				<version>2.5.2</version>
++				<inherited>false</inherited>
++				<executions>
++					<execution>
++						<id>install-avro-repo-client</id>
++						<phase>validate</phase>
++						<goals>
++							<goal>install-file</goal>
++						</goals>
++						<configuration>
++							<groupId>org.apache.avro</groupId>
++							<artifactId>avro-repo-bundle</artifactId>
++							<version>1.7.4-SNAPSHOT</version>
++							<packaging>jar</packaging>
++							<file>${basedir}/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.jar</file>
++							<pomFile>${basedir}/lib/avro-repo-bundle-1.7.4-SNAPSHOT-withdeps.xml</pomFile>
++						</configuration>
++					</execution>
++				</executions>
++			</plugin>
++			<plugin>
++				<groupId>org.apache.maven.plugins</groupId>
++				<artifactId>maven-surefire-plugin</artifactId>
++				<version>2.12.4</version>
++				<configuration>
++					<argLine>-Djava.awt.headless=true</argLine>
++				</configuration>
++			</plugin>
++			<plugin>
++				<groupId>org.apache.maven.plugins</groupId>
++				<artifactId>maven-compiler-plugin</artifactId>
++				<version>3.2</version>
++				<configuration>
++					<source>1.6</source>
++					<target>1.6</target>
++					<encoding>UTF-8</encoding>
++					<compilerArgs>
++						<arg>-J-Djava.awt.headless=true</arg>
++					</compilerArgs>
++				</configuration>
++			</plugin>
++			<plugin>
++				<groupId>org.apache.maven.plugins</groupId>
++				<artifactId>maven-release-plugin</artifactId>
++				<version>2.5.1</version>
++				<configuration>
++					<tagNameFormat>@{project.version}</tagNameFormat>
++				</configuration>
++			</plugin>			
++		</plugins>
++	</build>	
++	<issueManagement>
++		<system>github</system>
++		<url>https://gecgithub01.walmart.com/platform/camus</url>
++	</issueManagement>
+ </project>
